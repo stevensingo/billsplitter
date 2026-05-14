@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#F7F5F0" />
+  <title>Split the Bill</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.33.0/dist/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #F7F5F0;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* ── Config overlay ── */
+    #config-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100; padding: 20px;
+    }
+    #config-box {
+      background: #fff; border-radius: 16px; padding: 28px 24px;
+      width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    #config-box h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    #config-box p { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+    #config-box input {
+      width: 100%; padding: 12px 14px; border: 1.5px solid #ddd;
+      border-radius: 10px; font-size: 14px; font-family: monospace;
+      outline: none; margin-bottom: 12px;
+    }
+    #config-box input:focus { border-color: #EF9F27; }
+    #config-btn {
+      width: 100%; padding: 14px; background: #EF9F27; color: #412402;
+      border: none; border-radius: 10px; font-size: 15px; font-weight: 600;
+      cursor: pointer;
+    }
+    #config-note { font-size: 11px; color: #999; margin-top: 10px; text-align: center; }
+    #config-note a { color: #854F0B; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .irow { animation: fadeUp 0.2s ease both; }
+    * { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+<div id="config-overlay">
+  <div id="config-box">
+    <h2>Enter your API key</h2>
+    <p>This app uses the Anthropic API to read your receipt. Your key is stored only in this browser and never sent anywhere except Anthropic.</p>
+    <input type="password" id="api-key-input" placeholder="sk-ant-..." autocomplete="off" />
+    <button id="config-btn" onclick="saveKey()">Continue</button>
+    <p id="config-note">
+      Get a free key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a><br/>
+      New accounts get $5 of free credit (~500 receipt scans)
+    </p>
+  </div>
+</div>
+
+<div id="root"></div>
+
+<script>
+  let API_KEY = localStorage.getItem("bs_api_key") || "";
+  if (API_KEY) document.getElementById("config-overlay").style.display = "none";
+
+  function saveKey() {
+    const val = document.getElementById("api-key-input").value.trim();
+    if (!val.startsWith("sk-ant-") && !val.startsWith("sk-")) {
+      alert("That doesn't look like a valid Anthropic API key (should start with sk-ant-)");
+      return;
+    }
+    API_KEY = val;
+    localStorage.setItem("bs_api_key", val);
+    document.getElementById("config-overlay").style.display = "none";
+    renderApp();
+  }
+
+  document.getElementById("api-key-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") saveKey();
+  });
+</script>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+const PROMPT = `You are a receipt parser. Extract all line items and charges from this receipt image.
+Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
+{
+  "restaurant": "restaurant or store name or null",
+  "currency": "currency symbol like Rp, $, etc.",
+  "items": [
+    { "id": "unique_id", "name": "item name", "qty": number, "unit_price": number, "total_price": number }
+  ],
+  "subtotal": number,
+  "service_charge": number,
+  "tax": number,
+  "other_charges": [{ "label": "charge name", "amount": number }],
+  "total": number
+}
+Rules:
+- qty must be a whole number >= 1
+- unit_price = total_price / qty
+- service_charge and tax are 0 if not present
+- other_charges is [] if none
+- All amounts are plain numbers (no currency symbols)
+- If you cannot read a value clearly, make your best estimate`;
+
+function fmt(amount, symbol) {
+  if (!symbol) symbol = "Rp";
+  if (symbol === "Rp" || symbol === "IDR") return "Rp\u00a0" + Math.round(amount).toLocaleString("id-ID");
+  return symbol + Number(amount).toFixed(2);
+}
+
+function Btn({ onClick, disabled, children }) {
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      minWidth: 44, minHeight: 44, borderRadius: 22, border: "1.5px solid #ddd",
+      background: disabled ? "#f5f5f5" : "#fff", color: disabled ? "#bbb" : "#111",
+      cursor: disabled ? "not-allowed" : "pointer", fontSize: 20,
+      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+    }}>{children}</button>
+  );
+}
+
+function App() {
+  const [stage, setStage] = React.useState(API_KEY ? "upload" : "key");
+  const [receipt, setReceipt] = React.useState(null);
+  const [preview, setPreview] = React.useState(null);
+  const [sel, setSel] = React.useState({});
+  const [error, setError] = React.useState(null);
+  const [drag, setDrag] = React.useState(false);
+  const fileRef = React.useRef();
+  const camRef = React.useRef();
+
+  const process = React.useCallback(async (file) => {
+    setError(null); setStage("loading");
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const b64 = e.target.result.split(",")[1];
+      setPreview(e.target.result);
+      try {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514", max_tokens: 1000,
+            messages: [{ role: "user", content: [
+              { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: b64 } },
+              { type: "text", text: PROMPT }
+            ]}]
+          })
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error.message);
+        const txt = d.content?.map(b => b.text||"").join("") || "";
+        const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+        setReceipt(parsed);
+        const init = {};
+        parsed.items.forEach(i => { init[i.id] = 0; });
+        setSel(init);
+        setStage("split");
+      } catch(err) {
+        setError("Couldn't read receipt. " + (err.message?.includes("API") ? err.message : "Try a clearer, well-lit photo."));
+        setStage("upload");
+      }
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleFile = f => { if (f?.type.startsWith("image/")) process(f); };
+  const adj = (id, delta, max) => setSel(s => ({...s, [id]: Math.max(0, Math.min(max, (s[id]||0)+delta))}));
+  const reset = () => { setStage("upload"); setReceipt(null); setPreview(null); setSel({}); setError(null); };
+
+  const mySub = receipt ? receipt.items.reduce((s,i) => s+(sel[i.id]||0)*i.unit_price, 0) : 0;
+  const totSub = receipt ? receipt.items.reduce((s,i) => s+i.total_price, 0) : 0;
+  const extras = receipt ? (receipt.service_charge||0)+(receipt.tax||0)+(receipt.other_charges||[]).reduce((s,c)=>s+c.amount,0) : 0;
+  const ratio = totSub > 0 ? mySub/totSub : 0;
+  const myTotal = mySub + extras*ratio;
+  const any = Object.values(sel).some(v=>v>0);
+
+  return (
+    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", background: "#F7F5F0" }}>
+
+      {/* Header */}
+      <div style={{ padding: "20px 20px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, color: "#111" }}>Split the bill</h1>
+          {stage === "split" && (
+            <button onClick={reset} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, color: "#888", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+              <i className="ti ti-refresh" style={{ fontSize: 16 }} /> New
+            </button>
+          )}
+          <button onClick={() => { localStorage.removeItem("bs_api_key"); location.reload(); }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 8, color: "#ccc", fontSize: 11 }}>
+            key
+          </button>
+        </div>
+        <p style={{ fontSize: 13, color: "#888", marginTop: 2 }}>
+          {stage === "split" && receipt ? `${receipt.restaurant||"Receipt"} · ${receipt.items.length} items` : "Snap or upload a receipt, pick your items."}
+        </p>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", WebkitOverflowScrolling: "touch" }}>
+
+        {stage === "upload" && (
+          <div>
+            <button onClick={() => camRef.current.click()} style={{
+              width: "100%", padding: 18, marginBottom: 12, border: "none",
+              borderRadius: 14, background: "#EF9F27", color: "#412402",
+              cursor: "pointer", fontSize: 16, fontWeight: 600, minHeight: 58,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 10
+            }}>
+              <i className="ti ti-camera" style={{ fontSize: 22 }} /> Take a photo
+            </button>
+            <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+
+            <div
+              onDragOver={e=>{e.preventDefault();setDrag(true);}}
+              onDragLeave={()=>setDrag(false)}
+              onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);}}
+              onClick={() => fileRef.current.click()}
+              style={{
+                border: `2px dashed ${drag?"#BA7517":"#ccc"}`, borderRadius: 14,
+                padding: "28px 20px", textAlign: "center", cursor: "pointer",
+                background: drag?"#FAEEDA":"#EEECE6", transition: "all 0.15s"
+              }}
+            >
+              <i className="ti ti-upload" style={{ fontSize: 28, color: "#aaa", display: "block", marginBottom: 8 }} />
+              <p style={{ fontSize: 14, margin: "0 0 2px", color: "#333", fontWeight: 500 }}>Upload from library</p>
+              <p style={{ fontSize: 12, color: "#999", margin: 0 }}>or drag & drop · JPG, PNG, HEIC</p>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
+
+            {error && <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 10, background: "#FEE", border: "0.5px solid #F99" }}><p style={{ margin: 0, fontSize: 13, color: "#c00" }}>{error}</p></div>}
+          </div>
+        )}
+
+        {stage === "loading" && (
+          <div style={{ textAlign: "center", paddingTop: 48 }}>
+            {preview && <img src={preview} alt="receipt" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 14, marginBottom: 28, objectFit: "contain" }} />}
+            <div style={{ width: 40, height: 40, border: "3px solid #eee", borderTopColor: "#EF9F27", borderRadius: "50%", margin: "0 auto 16px", animation: "spin 0.75s linear infinite" }} />
+            <p style={{ fontSize: 15, color: "#888" }}>Reading receipt…</p>
+          </div>
+        )}
+
+        {stage === "split" && receipt && (
+          <div>
+            {preview && <img src={preview} alt="receipt" style={{ width: "100%", maxHeight: 130, objectFit: "cover", borderRadius: 14, marginBottom: 12 }} />}
+
+            <div style={{ background: "#fff", borderRadius: 14, border: "0.5px solid #e5e5e5", overflow: "hidden", marginBottom: 12 }}>
+              {receipt.items.map((item, idx) => {
+                const s = sel[item.id]||0, active = s>0;
+                return (
+                  <div key={item.id} className="irow" style={{
+                    animationDelay: `${idx*35}ms`,
+                    display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", minHeight: 64,
+                    background: active?"#FFF8ED":"#fff",
+                    borderBottom: idx<receipt.items.length-1?"0.5px solid #f0f0f0":"none", transition: "background 0.2s"
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.3, fontWeight: active?600:400, color: "#111" }}>{item.name}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888", fontFamily: "monospace" }}>
+                        {item.qty>1?`${item.qty}× `:""}{fmt(item.unit_price, receipt.currency)}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <Btn onClick={()=>adj(item.id,-1,item.qty)} disabled={s===0}>−</Btn>
+                      <span style={{ minWidth: 28, textAlign: "center", fontSize: 17, fontWeight: 600, color: active?"#854F0B":"#bbb", fontFamily: "monospace" }}>{s}</span>
+                      <Btn onClick={()=>adj(item.id,+1,item.qty)} disabled={s===item.qty}>+</Btn>
+                    </div>
+                    <span style={{ minWidth: 72, textAlign: "right", fontSize: 14, fontFamily: "monospace", color: active?"#854F0B":"#bbb", fontWeight: active?600:400, flexShrink: 0 }}>
+                      {fmt(s*item.unit_price, receipt.currency)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {extras > 0 && (
+              <div style={{ background: "#fff", border: "0.5px solid #e5e5e5", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
+                <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 600, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.06em" }}>Shared charges — split proportionally</p>
+                {[
+                  receipt.service_charge>0 && {label:"Service charge",amount:receipt.service_charge},
+                  receipt.tax>0 && {label:"Pajak / tax",amount:receipt.tax},
+                  ...(receipt.other_charges||[])
+                ].filter(Boolean).map((c,i)=>(
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
+                    <span style={{ fontSize: 14, color: "#666" }}>{c.label}</span>
+                    <span style={{ fontSize: 14, fontFamily: "monospace", color: any?"#854F0B":"#bbb" }}>
+                      {any ? fmt(c.amount*ratio,receipt.currency) : `${fmt(c.amount,receipt.currency)} total`}
+                    </span>
+                  </div>
+                ))}
+                {any && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#aaa" }}>You're paying {Math.round(ratio*100)}% of the subtotal</p>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Sticky total */}
+      {stage === "split" && receipt && (
+        <div style={{ padding: "10px 16px max(16px,env(safe-area-inset-bottom))", background: "#F7F5F0", borderTop: "0.5px solid #e8e5df" }}>
+          <div style={{ background: any?"#EF9F27":"#EEECE6", borderRadius: 14, padding: "14px 18px", transition: "background 0.3s" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: any?"#412402":"#888" }}>Your share</span>
+              <span style={{ fontSize: 30, fontWeight: 700, fontFamily: "monospace", color: any?"#412402":"#bbb", letterSpacing: "-0.5px" }}>
+                {fmt(myTotal, receipt.currency)}
+              </span>
+            </div>
+            {any
+              ? <p style={{ fontSize: 12, color: "#633806", margin: "4px 0 0", textAlign: "right" }}>{fmt(mySub,receipt.currency)} items + {fmt(extras*ratio,receipt.currency)} charges</p>
+              : <p style={{ fontSize: 12, color: "#999", margin: "4px 0 0" }}>Tap + next to each item you ordered</p>
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderApp() {
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+}
+if (API_KEY) renderApp();
+</script>
+</body>
+</html>
