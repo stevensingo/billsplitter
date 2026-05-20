@@ -80,26 +80,72 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this structur
 Rules: qty>=1 integer, unit_price=total_price/qty, missing charges=0, other_charges=[], amounts are plain numbers.`;
 
 async function callOpenRouter(key, b64, mime) {
-  const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-    body: JSON.stringify({
-      model: "openrouter/free",
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
-          { type: "text", text: PROMPT }
-        ]
-      }],
-      temperature: 0.1,
-      max_tokens: 1200,
-    })
-  });
-  const d = await r.json();
-  if (d.error) throw new Error(d.error.message);
+  console.log("[SPLIT//OPS] Starting API call...");
+  console.log("[SPLIT//OPS] Model: openrouter/free");
+  console.log("[SPLIT//OPS] Image mime type:", mime);
+  console.log("[SPLIT//OPS] Base64 size (chars):", b64.length, `(~${(b64.length * 0.75 / 1024).toFixed(1)} KB)`);
+
+  const payload = {
+    model: "openrouter/free",
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
+        { type: "text", text: PROMPT }
+      ]
+    }],
+    temperature: 0.1,
+    max_tokens: 1200,
+  };
+
+  console.log("[SPLIT//OPS] Sending fetch to openrouter.ai...");
+  const t0 = Date.now();
+
+  let r;
+  try {
+    r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify(payload)
+    });
+  } catch (fetchErr) {
+    console.error("[SPLIT//OPS] fetch() threw an error (network/CORS issue):", fetchErr);
+    throw new Error("Network error — check your connection: " + fetchErr.message);
+  }
+
+  console.log("[SPLIT//OPS] Response received in", Date.now() - t0, "ms");
+  console.log("[SPLIT//OPS] HTTP status:", r.status, r.statusText);
+
+  const raw = await r.text();
+  console.log("[SPLIT//OPS] Raw response body:", raw);
+
+  let d;
+  try {
+    d = JSON.parse(raw);
+  } catch (parseErr) {
+    console.error("[SPLIT//OPS] Failed to parse response as JSON:", parseErr);
+    throw new Error("Non-JSON response from OpenRouter: " + raw.slice(0, 200));
+  }
+
+  if (d.error) {
+    console.error("[SPLIT//OPS] API returned an error object:", d.error);
+    throw new Error(d.error.message);
+  }
+
   const txt = d.choices?.[0]?.message?.content || "";
-  return JSON.parse(txt.replace(/```json|```/g,"").trim());
+  console.log("[SPLIT//OPS] Model used:", d.model || "unknown");
+  console.log("[SPLIT//OPS] Raw model output:", txt);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+  } catch (jsonErr) {
+    console.error("[SPLIT//OPS] Failed to parse model output as JSON:", jsonErr);
+    throw new Error("Model didn't return valid JSON. Output was: " + txt.slice(0, 300));
+  }
+
+  console.log("[SPLIT//OPS] Parsed receipt:", parsed);
+  return parsed;
 }
 
 /* ─── Helpers ─────────────────────────────────────────── */
@@ -384,10 +430,14 @@ function App() {
   if (!apiKey) return <KeyScreen onSave={setApiKey} />;
 
   const process = async (file) => {
+    if (!file?.type.startsWith("image/")) { console.warn("[SPLIT//OPS] Rejected file — not an image:", file?.type); return; }
+    console.log("[SPLIT//OPS] File selected:", file.name, file.type, `${(file.size/1024).toFixed(1)} KB`);
+    if (file.size > 10 * 1024 * 1024) console.warn("[SPLIT//OPS] File is >10MB — this may cause issues");
     setError(null); setStage("loading");
     const reader = new FileReader();
     reader.onload = async (e) => {
       const b64 = e.target.result.split(",")[1];
+      console.log("[SPLIT//OPS] FileReader done, base64 length:", b64.length, `(~${(b64.length*0.75/1024).toFixed(1)} KB)`);
       setPreview(e.target.result);
       try {
         const parsed = await callOpenRouter(apiKey, b64, file.type||"image/jpeg");
@@ -397,10 +447,12 @@ function App() {
         setSel(init);
         setStage("split");
       } catch(err) {
+        console.error("[SPLIT//OPS] Top-level catch:", err);
         setError(err.message||"Vision analysis failed");
         setStage("upload");
       }
     };
+    reader.onerror = (e) => { console.error("[SPLIT//OPS] FileReader error:", e); setError("Failed to read image file."); setStage("upload"); };
     reader.readAsDataURL(file);
   };
 
