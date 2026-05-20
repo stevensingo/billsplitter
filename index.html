@@ -5,331 +5,477 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="theme-color" content="#F7F5F0" />
-  <title>Split the Bill</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.33.0/dist/tabler-icons.min.css" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#080A0E" />
+  <title>SPLIT//OPS</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { height: 100%; }
+
+    :root {
+      --bg:        #080A0E;
+      --bg1:       #0D1017;
+      --bg2:       #111520;
+      --bg3:       #161B28;
+      --border:    #1E2535;
+      --border2:   #252D40;
+      --accent:    #00C896;
+      --accent-dim:#00896A;
+      --accent-bg: rgba(0,200,150,0.06);
+      --red:       #FF4D6A;
+      --text:      #C8D4E8;
+      --text2:     #6B7FA3;
+      --text3:     #3A4860;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #F7F5F0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
       -webkit-font-smoothing: antialiased;
     }
-    /* ── Config overlay ── */
-    #config-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100; padding: 20px;
-    }
-    #config-box {
-      background: #fff; border-radius: 16px; padding: 28px 24px;
-      width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    }
-    #config-box h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-    #config-box p { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
-    #config-box input {
-      width: 100%; padding: 12px 14px; border: 1.5px solid #ddd;
-      border-radius: 10px; font-size: 14px; font-family: monospace;
-      outline: none; margin-bottom: 12px;
-    }
-    #config-box input:focus { border-color: #EF9F27; }
-    #config-btn {
-      width: 100%; padding: 14px; background: #EF9F27; color: #412402;
-      border: none; border-radius: 10px; font-size: 15px; font-weight: 600;
-      cursor: pointer;
-    }
-    #config-note { font-size: 11px; color: #999; margin-top: 10px; text-align: center; }
-    #config-note a { color: #854F0B; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-    .irow { animation: fadeUp 0.2s ease both; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    @keyframes spin   { to { transform: rotate(360deg); } }
+    @keyframes pulse  { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    @keyframes scan   { 0% { top: -20%; } 100% { top: 110%; } }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes blink  { 0%,100% { opacity:1; } 50% { opacity:0; } }
+
+    .row-in { animation: fadeUp 0.18s ease both; }
     * { -webkit-tap-highlight-color: transparent; }
+    input, button { font-family: var(--sans); }
   </style>
 </head>
 <body>
-<div id="config-overlay">
-  <div id="config-box">
-    <h2>Enter your API key</h2>
-    <p>This app uses the Anthropic API to read your receipt. Your key is stored only in this browser and never sent anywhere except Anthropic.</p>
-    <input type="password" id="api-key-input" placeholder="sk-ant-..." autocomplete="off" />
-    <button id="config-btn" onclick="saveKey()">Continue</button>
-    <p id="config-note">
-      Get a free key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a><br/>
-      New accounts get $5 of free credit (~500 receipt scans)
-    </p>
-  </div>
-</div>
-
 <div id="root"></div>
-
-<script>
-  let API_KEY = localStorage.getItem("bs_api_key") || "";
-  if (API_KEY) document.getElementById("config-overlay").style.display = "none";
-
-  function saveKey() {
-    const val = document.getElementById("api-key-input").value.trim();
-    if (!val.startsWith("sk-ant-") && !val.startsWith("sk-")) {
-      alert("That doesn't look like a valid Anthropic API key (should start with sk-ant-)");
-      return;
-    }
-    API_KEY = val;
-    localStorage.setItem("bs_api_key", val);
-    document.getElementById("config-overlay").style.display = "none";
-    renderApp();
-  }
-
-  document.getElementById("api-key-input").addEventListener("keydown", e => {
-    if (e.key === "Enter") saveKey();
-  });
-</script>
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="text/babel">
+const { useState, useRef, useCallback, useEffect } = React;
+
+/* ─── Gemini ─────────────────────────────────────────── */
 const PROMPT = `You are a receipt parser. Extract all line items and charges from this receipt image.
-Return ONLY a valid JSON object (no markdown, no explanation) with this exact structure:
+Return ONLY a valid JSON object (no markdown, no explanation) with this structure:
 {
-  "restaurant": "restaurant or store name or null",
-  "currency": "currency symbol like Rp, $, etc.",
-  "items": [
-    { "id": "unique_id", "name": "item name", "qty": number, "unit_price": number, "total_price": number }
-  ],
+  "restaurant": "name or null",
+  "currency": "symbol e.g. Rp or $",
+  "items": [{ "id": "uid", "name": "string", "qty": number, "unit_price": number, "total_price": number }],
   "subtotal": number,
   "service_charge": number,
   "tax": number,
-  "other_charges": [{ "label": "charge name", "amount": number }],
+  "other_charges": [{ "label": "string", "amount": number }],
   "total": number
 }
-Rules:
-- qty must be a whole number >= 1
-- unit_price = total_price / qty
-- service_charge and tax are 0 if not present
-- other_charges is [] if none
-- All amounts are plain numbers (no currency symbols)
-- If you cannot read a value clearly, make your best estimate`;
+Rules: qty>=1 integer, unit_price=total_price/qty, missing charges=0, other_charges=[], amounts are plain numbers.`;
 
-function fmt(amount, symbol) {
-  if (!symbol) symbol = "Rp";
-  if (symbol === "Rp" || symbol === "IDR") return "Rp\u00a0" + Math.round(amount).toLocaleString("id-ID");
-  return symbol + Number(amount).toFixed(2);
+async function callGemini(key, b64, mime) {
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+    { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        contents:[{parts:[{inline_data:{mime_type:mime,data:b64}},{text:PROMPT}]}],
+        generationConfig:{temperature:0.1,maxOutputTokens:1200}
+      })
+    }
+  );
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
+  const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return JSON.parse(txt.replace(/```json|```/g,"").trim());
 }
 
-function Btn({ onClick, disabled, children }) {
+/* ─── Helpers ─────────────────────────────────────────── */
+function fmt(n, sym="Rp") {
+  if (sym==="Rp"||sym==="IDR") return "Rp\u00a0"+Math.round(n).toLocaleString("id-ID");
+  return sym+Number(n).toFixed(2);
+}
+
+/* ─── Micro components ────────────────────────────────── */
+function Label({ children }) {
+  return <p style={{fontFamily:"var(--mono)",fontSize:9,fontWeight:500,letterSpacing:"0.18em",color:"var(--text3)",textTransform:"uppercase",margin:"0 0 8px"}}>{children}</p>;
+}
+
+function Divider() {
+  return <div style={{height:1,background:"var(--border)",margin:"0"}} />;
+}
+
+function Tag({ children, color }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{
-      minWidth: 44, minHeight: 44, borderRadius: 22, border: "1.5px solid #ddd",
-      background: disabled ? "#f5f5f5" : "#fff", color: disabled ? "#bbb" : "#111",
-      cursor: disabled ? "not-allowed" : "pointer", fontSize: 20,
-      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
-    }}>{children}</button>
+    <span style={{fontFamily:"var(--mono)",fontSize:9,fontWeight:600,letterSpacing:"0.12em",padding:"2px 6px",background:color+"18",color,border:`0.5px solid ${color}40`,borderRadius:2}}>
+      {children}
+    </span>
   );
 }
 
-function App() {
-  const [stage, setStage] = React.useState(API_KEY ? "upload" : "key");
-  const [receipt, setReceipt] = React.useState(null);
-  const [preview, setPreview] = React.useState(null);
-  const [sel, setSel] = React.useState({});
-  const [error, setError] = React.useState(null);
-  const [drag, setDrag] = React.useState(false);
-  const fileRef = React.useRef();
-  const camRef = React.useRef();
-
-  const process = React.useCallback(async (file) => {
-    setError(null); setStage("loading");
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const b64 = e.target.result.split(",")[1];
-      setPreview(e.target.result);
-      try {
-        const r = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514", max_tokens: 1000,
-            messages: [{ role: "user", content: [
-              { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: b64 } },
-              { type: "text", text: PROMPT }
-            ]}]
-          })
-        });
-        const d = await r.json();
-        if (d.error) throw new Error(d.error.message);
-        const txt = d.content?.map(b => b.text||"").join("") || "";
-        const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
-        setReceipt(parsed);
-        const init = {};
-        parsed.items.forEach(i => { init[i.id] = 0; });
-        setSel(init);
-        setStage("split");
-      } catch(err) {
-        setError("Couldn't read receipt. " + (err.message?.includes("API") ? err.message : "Try a clearer, well-lit photo."));
-        setStage("upload");
-      }
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
-  const handleFile = f => { if (f?.type.startsWith("image/")) process(f); };
-  const adj = (id, delta, max) => setSel(s => ({...s, [id]: Math.max(0, Math.min(max, (s[id]||0)+delta))}));
-  const reset = () => { setStage("upload"); setReceipt(null); setPreview(null); setSel({}); setError(null); };
-
-  const mySub = receipt ? receipt.items.reduce((s,i) => s+(sel[i.id]||0)*i.unit_price, 0) : 0;
-  const totSub = receipt ? receipt.items.reduce((s,i) => s+i.total_price, 0) : 0;
-  const extras = receipt ? (receipt.service_charge||0)+(receipt.tax||0)+(receipt.other_charges||[]).reduce((s,c)=>s+c.amount,0) : 0;
-  const ratio = totSub > 0 ? mySub/totSub : 0;
-  const myTotal = mySub + extras*ratio;
-  const any = Object.values(sel).some(v=>v>0);
-
+function PlusMinusBtn({ onClick, disabled, label }) {
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", background: "#F7F5F0" }}>
+    <button onClick={onClick} disabled={disabled} aria-label={label} style={{
+      width:36, height:36, border:`1px solid ${disabled?"var(--border)":"var(--border2)"}`,
+      background: disabled?"transparent":"var(--bg3)",
+      color: disabled?"var(--text3)":"var(--text2)",
+      cursor: disabled?"not-allowed":"pointer",
+      fontSize:18, fontFamily:"var(--mono)", fontWeight:300,
+      display:"flex", alignItems:"center", justifyContent:"center",
+      borderRadius:2, transition:"all 0.1s", flexShrink:0,
+    }}>{label}</button>
+  );
+}
 
-      {/* Header */}
-      <div style={{ padding: "20px 20px 12px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, color: "#111" }}>Split the bill</h1>
-          {stage === "split" && (
-            <button onClick={reset} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, color: "#888", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
-              <i className="ti ti-refresh" style={{ fontSize: 16 }} /> New
-            </button>
-          )}
-          <button onClick={() => { localStorage.removeItem("bs_api_key"); location.reload(); }}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 8, color: "#ccc", fontSize: 11 }}>
-            key
-          </button>
+/* ─── Key entry screen ────────────────────────────────── */
+function KeyScreen({ onSave }) {
+  const [val,setVal]=useState("");
+  const [err,setErr]=useState("");
+  const submit = () => {
+    const k=val.trim();
+    if (!k.startsWith("AIza")) { setErr("INVALID KEY FORMAT — MUST BEGIN WITH AIza"); return; }
+    localStorage.setItem("bsplit_key",k);
+    onSave(k);
+  };
+  return (
+    <div style={{minHeight:"100dvh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"24px 20px",background:"var(--bg)"}}>
+      <div style={{maxWidth:420,width:"100%",margin:"0 auto"}}>
+
+        <div style={{marginBottom:32}}>
+          <p style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.2em",color:"var(--accent)",marginBottom:6}}>SPLIT//OPS v1.0</p>
+          <h1 style={{fontSize:24,fontWeight:600,letterSpacing:"-0.3px",marginBottom:8}}>API KEY REQUIRED</h1>
+          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>
+            This app uses Google Gemini (free) to parse receipts. Get your key in 30 seconds — no credit card.
+          </p>
         </div>
-        <p style={{ fontSize: 13, color: "#888", marginTop: 2 }}>
-          {stage === "split" && receipt ? `${receipt.restaurant||"Receipt"} · ${receipt.items.length} items` : "Snap or upload a receipt, pick your items."}
+
+        <div style={{borderLeft:"2px solid var(--border2)",paddingLeft:16,marginBottom:28,display:"flex",flexDirection:"column",gap:12}}>
+          {[
+            ["01","Open","aistudio.google.com/apikey","https://aistudio.google.com/apikey"],
+            ["02","Sign in with Google → click","Create API key",null],
+            ["03","Copy key (starts with AIza) → paste below",null,null],
+          ].map(([n,pre,link,href])=>(
+            <div key={n} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+              <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",minWidth:20,paddingTop:1}}>{n}</span>
+              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.5}}>
+                {pre}{" "}
+                {href ? <a href={href} target="_blank" style={{color:"var(--accent)",textDecoration:"none"}}>{link}</a>
+                       : link ? <span style={{color:"var(--text)",fontWeight:500}}>{link}</span> : null}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <input
+          type="password" placeholder="AIza..." value={val}
+          onChange={e=>{setVal(e.target.value);setErr("");}}
+          onKeyDown={e=>e.key==="Enter"&&submit()}
+          style={{
+            width:"100%",padding:"13px 14px",
+            background:"var(--bg1)",border:`1px solid ${err?"var(--red)":"var(--border2)"}`,
+            borderRadius:3,fontSize:14,fontFamily:"var(--mono)",color:"var(--text)",
+            outline:"none",marginBottom:err?8:16,
+            letterSpacing:"0.05em",
+          }}
+        />
+        {err && <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--red)",letterSpacing:"0.1em",marginBottom:16}}>{err}</p>}
+
+        <button onClick={submit} style={{
+          width:"100%",padding:14,background:"var(--accent)",color:"#000",
+          border:"none",borderRadius:3,fontSize:13,fontWeight:600,
+          fontFamily:"var(--mono)",letterSpacing:"0.12em",cursor:"pointer",
+        }}>
+          AUTHENTICATE →
+        </button>
+
+        <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",textAlign:"center",marginTop:14,letterSpacing:"0.1em"}}>
+          1,500 FREE SCANS / DAY · KEY STORED LOCALLY · NEVER TRANSMITTED
         </p>
       </div>
+    </div>
+  );
+}
 
-      {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", WebkitOverflowScrolling: "touch" }}>
+/* ─── Upload screen ───────────────────────────────────── */
+function UploadScreen({ onFile, error }) {
+  const [drag,setDrag]=useState(false);
+  const fileRef=useRef(); const camRef=useRef();
+  const pick = f => { if (f?.type.startsWith("image/")) onFile(f); };
+  return (
+    <div style={{padding:"0 16px"}}>
+      {/* Camera CTA */}
+      <button onClick={()=>camRef.current.click()} style={{
+        width:"100%",minHeight:64,border:"1px solid var(--accent)",borderRadius:3,
+        background:"var(--accent-bg)",color:"var(--accent)",
+        fontSize:13,fontWeight:600,fontFamily:"var(--mono)",letterSpacing:"0.12em",
+        cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,
+        marginBottom:10,
+      }}>
+        <CamIcon /> SCAN RECEIPT
+      </button>
+      <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>pick(e.target.files[0])} />
 
-        {stage === "upload" && (
-          <div>
-            <button onClick={() => camRef.current.click()} style={{
-              width: "100%", padding: 18, marginBottom: 12, border: "none",
-              borderRadius: 14, background: "#EF9F27", color: "#412402",
-              cursor: "pointer", fontSize: 16, fontWeight: 600, minHeight: 58,
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 10
-            }}>
-              <i className="ti ti-camera" style={{ fontSize: 22 }} /> Take a photo
-            </button>
-            <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-
-            <div
-              onDragOver={e=>{e.preventDefault();setDrag(true);}}
-              onDragLeave={()=>setDrag(false)}
-              onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);}}
-              onClick={() => fileRef.current.click()}
-              style={{
-                border: `2px dashed ${drag?"#BA7517":"#ccc"}`, borderRadius: 14,
-                padding: "28px 20px", textAlign: "center", cursor: "pointer",
-                background: drag?"#FAEEDA":"#EEECE6", transition: "all 0.15s"
-              }}
-            >
-              <i className="ti ti-upload" style={{ fontSize: 28, color: "#aaa", display: "block", marginBottom: 8 }} />
-              <p style={{ fontSize: 14, margin: "0 0 2px", color: "#333", fontWeight: 500 }}>Upload from library</p>
-              <p style={{ fontSize: 12, color: "#999", margin: 0 }}>or drag & drop · JPG, PNG, HEIC</p>
-            </div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-
-            {error && <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 10, background: "#FEE", border: "0.5px solid #F99" }}><p style={{ margin: 0, fontSize: 13, color: "#c00" }}>{error}</p></div>}
-          </div>
-        )}
-
-        {stage === "loading" && (
-          <div style={{ textAlign: "center", paddingTop: 48 }}>
-            {preview && <img src={preview} alt="receipt" style={{ maxHeight: 200, maxWidth: "100%", borderRadius: 14, marginBottom: 28, objectFit: "contain" }} />}
-            <div style={{ width: 40, height: 40, border: "3px solid #eee", borderTopColor: "#EF9F27", borderRadius: "50%", margin: "0 auto 16px", animation: "spin 0.75s linear infinite" }} />
-            <p style={{ fontSize: 15, color: "#888" }}>Reading receipt…</p>
-          </div>
-        )}
-
-        {stage === "split" && receipt && (
-          <div>
-            {preview && <img src={preview} alt="receipt" style={{ width: "100%", maxHeight: 130, objectFit: "cover", borderRadius: 14, marginBottom: 12 }} />}
-
-            <div style={{ background: "#fff", borderRadius: 14, border: "0.5px solid #e5e5e5", overflow: "hidden", marginBottom: 12 }}>
-              {receipt.items.map((item, idx) => {
-                const s = sel[item.id]||0, active = s>0;
-                return (
-                  <div key={item.id} className="irow" style={{
-                    animationDelay: `${idx*35}ms`,
-                    display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", minHeight: 64,
-                    background: active?"#FFF8ED":"#fff",
-                    borderBottom: idx<receipt.items.length-1?"0.5px solid #f0f0f0":"none", transition: "background 0.2s"
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 15, lineHeight: 1.3, fontWeight: active?600:400, color: "#111" }}>{item.name}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888", fontFamily: "monospace" }}>
-                        {item.qty>1?`${item.qty}× `:""}{fmt(item.unit_price, receipt.currency)}
-                      </p>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                      <Btn onClick={()=>adj(item.id,-1,item.qty)} disabled={s===0}>−</Btn>
-                      <span style={{ minWidth: 28, textAlign: "center", fontSize: 17, fontWeight: 600, color: active?"#854F0B":"#bbb", fontFamily: "monospace" }}>{s}</span>
-                      <Btn onClick={()=>adj(item.id,+1,item.qty)} disabled={s===item.qty}>+</Btn>
-                    </div>
-                    <span style={{ minWidth: 72, textAlign: "right", fontSize: 14, fontFamily: "monospace", color: active?"#854F0B":"#bbb", fontWeight: active?600:400, flexShrink: 0 }}>
-                      {fmt(s*item.unit_price, receipt.currency)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {extras > 0 && (
-              <div style={{ background: "#fff", border: "0.5px solid #e5e5e5", borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
-                <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 600, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.06em" }}>Shared charges — split proportionally</p>
-                {[
-                  receipt.service_charge>0 && {label:"Service charge",amount:receipt.service_charge},
-                  receipt.tax>0 && {label:"Pajak / tax",amount:receipt.tax},
-                  ...(receipt.other_charges||[])
-                ].filter(Boolean).map((c,i)=>(
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
-                    <span style={{ fontSize: 14, color: "#666" }}>{c.label}</span>
-                    <span style={{ fontSize: 14, fontFamily: "monospace", color: any?"#854F0B":"#bbb" }}>
-                      {any ? fmt(c.amount*ratio,receipt.currency) : `${fmt(c.amount,receipt.currency)} total`}
-                    </span>
-                  </div>
-                ))}
-                {any && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#aaa" }}>You're paying {Math.round(ratio*100)}% of the subtotal</p>}
-              </div>
-            )}
-          </div>
-        )}
+      {/* Drop zone */}
+      <div
+        onDragOver={e=>{e.preventDefault();setDrag(true);}}
+        onDragLeave={()=>setDrag(false)}
+        onDrop={e=>{e.preventDefault();setDrag(false);pick(e.dataTransfer.files[0]);}}
+        onClick={()=>fileRef.current.click()}
+        style={{
+          border:`1px dashed ${drag?"var(--accent)":"var(--border2)"}`,
+          borderRadius:3,padding:"24px 20px",textAlign:"center",cursor:"pointer",
+          background:drag?"var(--accent-bg)":"transparent",transition:"all 0.15s",
+          marginBottom:10,
+        }}
+      >
+        <UploadIcon />
+        <p style={{fontSize:13,color:"var(--text2)",margin:"8px 0 2px",fontWeight:500}}>Upload from library</p>
+        <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",letterSpacing:"0.08em"}}>JPG · PNG · HEIC · WEBP</p>
       </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>pick(e.target.files[0])} />
 
-      {/* Sticky total */}
-      {stage === "split" && receipt && (
-        <div style={{ padding: "10px 16px max(16px,env(safe-area-inset-bottom))", background: "#F7F5F0", borderTop: "0.5px solid #e8e5df" }}>
-          <div style={{ background: any?"#EF9F27":"#EEECE6", borderRadius: 14, padding: "14px 18px", transition: "background 0.3s" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: any?"#412402":"#888" }}>Your share</span>
-              <span style={{ fontSize: 30, fontWeight: 700, fontFamily: "monospace", color: any?"#412402":"#bbb", letterSpacing: "-0.5px" }}>
-                {fmt(myTotal, receipt.currency)}
-              </span>
-            </div>
-            {any
-              ? <p style={{ fontSize: 12, color: "#633806", margin: "4px 0 0", textAlign: "right" }}>{fmt(mySub,receipt.currency)} items + {fmt(extras*ratio,receipt.currency)} charges</p>
-              : <p style={{ fontSize: 12, color: "#999", margin: "4px 0 0" }}>Tap + next to each item you ordered</p>
-            }
-          </div>
+      {error && (
+        <div style={{padding:"10px 14px",border:"1px solid var(--red)40",borderRadius:3,background:"rgba(255,77,106,0.06)"}}>
+          <p style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--red)",letterSpacing:"0.05em"}}>ERR // {error}</p>
         </div>
       )}
     </div>
   );
 }
 
-function renderApp() {
-  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+/* ─── Loading screen ──────────────────────────────────── */
+function LoadingScreen({ preview }) {
+  const [dots,setDots]=useState(".");
+  useEffect(()=>{
+    const t=setInterval(()=>setDots(d=>d.length>=3?".":"d.".repeat(d.length+1).slice(0,-1)+"."),400);
+    return ()=>clearInterval(t);
+  },[]);
+  return (
+    <div style={{padding:"0 16px",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:20}}>
+      {preview && (
+        <div style={{position:"relative",width:"100%",maxHeight:200,overflow:"hidden",borderRadius:3,marginBottom:20,border:"1px solid var(--border)"}}>
+          <img src={preview} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",display:"block",opacity:0.4}} />
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom, transparent 60%, var(--bg) 100%)"}} />
+          {/* scan line */}
+          <div style={{position:"absolute",left:0,right:0,height:2,background:`linear-gradient(to right, transparent, var(--accent), transparent)`,animation:"scan 1.6s linear infinite",boxShadow:`0 0 12px var(--accent)`}} />
+        </div>
+      )}
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"pulse 1s ease-in-out infinite"}} />
+        <p style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--accent)",letterSpacing:"0.15em"}}>PARSING RECEIPT{dots}</p>
+      </div>
+      <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",letterSpacing:"0.1em"}}>GEMINI 2.0 FLASH · VISION ANALYSIS</p>
+    </div>
+  );
 }
-if (API_KEY) renderApp();
+
+/* ─── Split screen ────────────────────────────────────── */
+function SplitScreen({ receipt, sel, onAdj }) {
+  const extras = [
+    receipt.service_charge>0 && {label:"SERVICE CHARGE",amount:receipt.service_charge},
+    receipt.tax>0 && {label:"PAJAK / TAX",amount:receipt.tax},
+    ...(receipt.other_charges||[]).map(c=>({label:c.label.toUpperCase(),amount:c.amount})),
+  ].filter(Boolean);
+
+  const mySub  = receipt.items.reduce((s,i)=>s+(sel[i.id]||0)*i.unit_price,0);
+  const totSub = receipt.items.reduce((s,i)=>s+i.total_price,0);
+  const ratio  = totSub>0?mySub/totSub:0;
+  const any    = mySub>0;
+
+  return (
+    <div style={{padding:"0 16px"}}>
+      {/* Items table */}
+      <div style={{border:"1px solid var(--border)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
+        <div style={{padding:"8px 14px",background:"var(--bg1)",borderBottom:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <Label>LINE ITEMS</Label>
+          <Tag color="var(--text3)">{receipt.items.length} ROWS</Tag>
+        </div>
+        {receipt.items.map((item,idx)=>{
+          const s=sel[item.id]||0, active=s>0;
+          return (
+            <div key={item.id} className="row-in" style={{
+              animationDelay:`${idx*30}ms`,
+              display:"flex",alignItems:"center",gap:10,padding:"11px 14px",
+              background:active?"var(--accent-bg)":"transparent",
+              borderBottom:idx<receipt.items.length-1?"1px solid var(--border)":"none",
+              transition:"background 0.15s",
+            }}>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:14,fontWeight:active?500:400,color:active?"var(--text)":"var(--text2)",margin:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                  {item.name}
+                </p>
+                <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",margin:"2px 0 0",letterSpacing:"0.05em"}}>
+                  {item.qty>1?`${item.qty}× `:""}{fmt(item.unit_price,receipt.currency)}
+                </p>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                <PlusMinusBtn onClick={()=>onAdj(item.id,-1,item.qty)} disabled={s===0} label="−" />
+                <span style={{minWidth:24,textAlign:"center",fontFamily:"var(--mono)",fontSize:16,fontWeight:500,color:active?"var(--accent)":"var(--text3)"}}>{s}</span>
+                <PlusMinusBtn onClick={()=>onAdj(item.id,+1,item.qty)} disabled={s===item.qty} label="+" />
+              </div>
+              <span style={{minWidth:80,textAlign:"right",fontFamily:"var(--mono)",fontSize:13,color:active?"var(--accent)":"var(--text3)",fontWeight:active?500:400,flexShrink:0}}>
+                {fmt(s*item.unit_price,receipt.currency)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Shared charges */}
+      {extras.length>0 && (
+        <div style={{border:"1px solid var(--border)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
+          <div style={{padding:"8px 14px",background:"var(--bg1)",borderBottom:"1px solid var(--border)"}}>
+            <Label>SHARED CHARGES</Label>
+          </div>
+          {extras.map((c,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderBottom:i<extras.length-1?"1px solid var(--border)":"none"}}>
+              <span style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--text2)",letterSpacing:"0.06em"}}>{c.label}</span>
+              <span style={{fontFamily:"var(--mono)",fontSize:12,color:any?"var(--accent)":"var(--text3)"}}>
+                {any ? fmt(c.amount*ratio,receipt.currency) : fmt(c.amount,receipt.currency)}
+              </span>
+            </div>
+          ))}
+          {any && (
+            <div style={{padding:"6px 14px 8px",background:"var(--bg1)"}}>
+              <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",letterSpacing:"0.1em"}}>
+                PRORATED AT {Math.round(ratio*100)}% OF SUBTOTAL
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── SVG icons ───────────────────────────────────────── */
+const CamIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+  </svg>
+);
+const UploadIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",margin:"0 auto"}}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+);
+
+/* ─── Main App ────────────────────────────────────────── */
+function App() {
+  const [apiKey,setApiKey] = useState(()=>localStorage.getItem("bsplit_key")||"");
+  const [stage,setStage]   = useState("upload"); // upload | loading | split
+  const [receipt,setReceipt] = useState(null);
+  const [preview,setPreview] = useState(null);
+  const [sel,setSel]         = useState({});
+  const [error,setError]     = useState(null);
+
+  if (!apiKey) return <KeyScreen onSave={setApiKey} />;
+
+  const process = async (file) => {
+    setError(null); setStage("loading");
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const b64 = e.target.result.split(",")[1];
+      setPreview(e.target.result);
+      try {
+        const parsed = await callGemini(apiKey, b64, file.type||"image/jpeg");
+        setReceipt(parsed);
+        const init={};
+        parsed.items.forEach(i=>{init[i.id]=0;});
+        setSel(init);
+        setStage("split");
+      } catch(err) {
+        setError(err.message||"Vision analysis failed");
+        setStage("upload");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const adj=(id,d,max)=>setSel(s=>({...s,[id]:Math.max(0,Math.min(max,(s[id]||0)+d))}));
+  const reset=()=>{setStage("upload");setReceipt(null);setPreview(null);setSel({});setError(null);};
+
+  const mySub  = receipt ? receipt.items.reduce((s,i)=>s+(sel[i.id]||0)*i.unit_price,0) : 0;
+  const totSub = receipt ? receipt.items.reduce((s,i)=>s+i.total_price,0) : 0;
+  const extras = receipt ? (receipt.service_charge||0)+(receipt.tax||0)+(receipt.other_charges||[]).reduce((s,c)=>s+c.amount,0) : 0;
+  const ratio  = totSub>0?mySub/totSub:0;
+  const myTotal = mySub + extras*ratio;
+  const any = mySub > 0;
+
+  return (
+    <div style={{maxWidth:480,margin:"0 auto",minHeight:"100dvh",display:"flex",flexDirection:"column",background:"var(--bg)"}}>
+
+      {/* ── Top bar ── */}
+      <div style={{padding:"16px 16px 14px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",boxShadow:`0 0 8px var(--accent)`,animation:"pulse 2s ease-in-out infinite"}} />
+          <span style={{fontFamily:"var(--mono)",fontSize:12,fontWeight:600,letterSpacing:"0.18em",color:"var(--text)"}}>SPLIT//OPS</span>
+          {receipt && <Tag color="var(--text2)">{receipt.restaurant||"RECEIPT"}</Tag>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          {stage==="split" && (
+            <button onClick={reset} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.12em",color:"var(--text2)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>
+              NEW
+            </button>
+          )}
+          <button onClick={()=>{localStorage.removeItem("bsplit_key");setApiKey("");reset();}} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.1em",color:"var(--text3)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>
+            KEY
+          </button>
+        </div>
+      </div>
+
+      {/* ── Content ── */}
+      <div style={{flex:1,overflowY:"auto",paddingTop:14,WebkitOverflowScrolling:"touch"}}>
+        {stage==="upload"  && <UploadScreen onFile={process} error={error} />}
+        {stage==="loading" && <LoadingScreen preview={preview} />}
+        {stage==="split" && receipt && <SplitScreen receipt={receipt} sel={sel} onAdj={adj} />}
+      </div>
+
+      {/* ── Footer total ── */}
+      {stage==="split" && receipt && (
+        <div style={{borderTop:"1px solid var(--border)",background:"var(--bg1)",padding:`12px 16px max(16px, env(safe-area-inset-bottom))`}}>
+          {/* Breakdown row */}
+          {any && (
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"0 2px"}}>
+              {[
+                ["ITEMS",mySub],
+                ["CHARGES",extras*ratio],
+                ["TOTAL",myTotal],
+              ].map(([lbl,val])=>(
+                <div key={lbl}>
+                  <p style={{fontFamily:"var(--mono)",fontSize:8,letterSpacing:"0.15em",color:"var(--text3)",marginBottom:2}}>{lbl}</p>
+                  <p style={{fontFamily:"var(--mono)",fontSize:11,color:lbl==="TOTAL"?"var(--accent)":"var(--text2)",fontWeight:500}}>
+                    {fmt(val,receipt.currency)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Main total */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",border:`1px solid ${any?"var(--accent)40":"var(--border)"}`,borderRadius:3,background:any?"var(--accent-bg)":"var(--bg2)",transition:"all 0.25s"}}>
+            <div>
+              <p style={{fontFamily:"var(--mono)",fontSize:9,letterSpacing:"0.18em",color:any?"var(--accent-dim)":"var(--text3)",marginBottom:2}}>YOUR SHARE</p>
+              {any && ratio>0 && (
+                <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",letterSpacing:"0.06em"}}>{Math.round(ratio*100)}% OF BILL</p>
+              )}
+            </div>
+            <p style={{fontFamily:"var(--mono)",fontSize:28,fontWeight:600,color:any?"var(--accent)":"var(--text3)",letterSpacing:"-0.5px",transition:"color 0.25s"}}>
+              {fmt(myTotal,receipt.currency)}
+            </p>
+          </div>
+          {!any && <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",textAlign:"center",marginTop:8,letterSpacing:"0.12em"}}>SELECT ITEMS ABOVE TO CALCULATE</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
