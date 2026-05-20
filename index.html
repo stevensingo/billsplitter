@@ -64,7 +64,7 @@
 <script type="text/babel">
 const { useState, useRef, useCallback, useEffect } = React;
 
-/* ─── Gemini ─────────────────────────────────────────── */
+/* ─── OpenRouter ─────────────────────────────────────── */
 const PROMPT = `You are a receipt parser. Extract all line items and charges from this receipt image.
 Return ONLY a valid JSON object (no markdown, no explanation) with this structure:
 {
@@ -79,19 +79,26 @@ Return ONLY a valid JSON object (no markdown, no explanation) with this structur
 }
 Rules: qty>=1 integer, unit_price=total_price/qty, missing charges=0, other_charges=[], amounts are plain numbers.`;
 
-async function callGemini(key, b64, mime) {
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
-    { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        contents:[{parts:[{inline_data:{mime_type:mime,data:b64}},{text:PROMPT}]}],
-        generationConfig:{temperature:0.1,maxOutputTokens:1200}
-      })
-    }
-  );
+async function callOpenRouter(key, b64, mime) {
+  const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+    body: JSON.stringify({
+      model: "qwen/qwen2.5-vl-72b-instruct:free",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
+          { type: "text", text: PROMPT }
+        ]
+      }],
+      temperature: 0.1,
+      max_tokens: 1200,
+    })
+  });
   const d = await r.json();
   if (d.error) throw new Error(d.error.message);
-  const txt = d.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const txt = d.choices?.[0]?.message?.content || "";
   return JSON.parse(txt.replace(/```json|```/g,"").trim());
 }
 
@@ -138,8 +145,8 @@ function KeyScreen({ onSave }) {
   const [err,setErr]=useState("");
   const submit = () => {
     const k=val.trim();
-    if (!k.startsWith("AIza")) { setErr("INVALID KEY FORMAT — MUST BEGIN WITH AIza"); return; }
-    localStorage.setItem("bsplit_key",k);
+    if (!k.startsWith("sk-or-")) { setErr("INVALID KEY FORMAT — MUST BEGIN WITH sk-or-"); return; }
+    localStorage.setItem("bsplit_or_key",k);
     onSave(k);
   };
   return (
@@ -150,15 +157,15 @@ function KeyScreen({ onSave }) {
           <p style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.2em",color:"var(--accent)",marginBottom:6}}>SPLIT//OPS v1.0</p>
           <h1 style={{fontSize:24,fontWeight:600,letterSpacing:"-0.3px",marginBottom:8}}>API KEY REQUIRED</h1>
           <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>
-            This app uses Google Gemini (free) to parse receipts. Get your key in 30 seconds — no credit card.
+            Uses OpenRouter — free vision AI that works globally. No credit card needed.
           </p>
         </div>
 
         <div style={{borderLeft:"2px solid var(--border2)",paddingLeft:16,marginBottom:28,display:"flex",flexDirection:"column",gap:12}}>
           {[
-            ["01","Open","aistudio.google.com/apikey","https://aistudio.google.com/apikey"],
-            ["02","Sign in with Google → click","Create API key",null],
-            ["03","Copy key (starts with AIza) → paste below",null,null],
+            ["01","Create a free account at","openrouter.ai","https://openrouter.ai"],
+            ["02","Go to","Keys → Create Key","https://openrouter.ai/keys"],
+            ["03","Copy the key (starts with sk-or-) → paste below",null,null],
           ].map(([n,pre,link,href])=>(
             <div key={n} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",minWidth:20,paddingTop:1}}>{n}</span>
@@ -172,7 +179,7 @@ function KeyScreen({ onSave }) {
         </div>
 
         <input
-          type="password" placeholder="AIza..." value={val}
+          type="password" placeholder="sk-or-..." value={val}
           onChange={e=>{setVal(e.target.value);setErr("");}}
           onKeyDown={e=>e.key==="Enter"&&submit()}
           style={{
@@ -194,7 +201,7 @@ function KeyScreen({ onSave }) {
         </button>
 
         <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",textAlign:"center",marginTop:14,letterSpacing:"0.1em"}}>
-          1,500 FREE SCANS / DAY · KEY STORED LOCALLY · NEVER TRANSMITTED
+          FREE TIER AVAILABLE · KEY STORED LOCALLY · NEVER TRANSMITTED
         </p>
       </div>
     </div>
@@ -367,7 +374,7 @@ const UploadIcon = () => (
 
 /* ─── Main App ────────────────────────────────────────── */
 function App() {
-  const [apiKey,setApiKey] = useState(()=>localStorage.getItem("bsplit_key")||"");
+  const [apiKey,setApiKey] = useState(()=>localStorage.getItem("bsplit_or_key")||"");
   const [stage,setStage]   = useState("upload"); // upload | loading | split
   const [receipt,setReceipt] = useState(null);
   const [preview,setPreview] = useState(null);
@@ -383,7 +390,7 @@ function App() {
       const b64 = e.target.result.split(",")[1];
       setPreview(e.target.result);
       try {
-        const parsed = await callGemini(apiKey, b64, file.type||"image/jpeg");
+        const parsed = await callOpenRouter(apiKey, b64, file.type||"image/jpeg");
         setReceipt(parsed);
         const init={};
         parsed.items.forEach(i=>{init[i.id]=0;});
@@ -423,7 +430,7 @@ function App() {
               NEW
             </button>
           )}
-          <button onClick={()=>{localStorage.removeItem("bsplit_key");setApiKey("");reset();}} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.1em",color:"var(--text3)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>
+          <button onClick={()=>{localStorage.removeItem("bsplit_or_key");setApiKey("");reset();}} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.1em",color:"var(--text3)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>
             KEY
           </button>
         </div>
