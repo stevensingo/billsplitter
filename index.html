@@ -95,7 +95,7 @@ async function callOpenRouter(key, b64, mime, onStatus) {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-exp:free",
+        model: "meta-llama/llama-3.2-11b-vision-instruct:free",
         messages: [{ role: "user", content: [
           { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
           { type: "text", text: PROMPT }
