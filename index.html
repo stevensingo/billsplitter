@@ -6,7 +6,7 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="theme-color" content="#060809"/>
-  <title>SPLIT//OPS</title>
+  <title>SPLIT BILL</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -136,7 +136,7 @@ function KeyScreen({onSave}){
   return(
     <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px 20px'}}>
       <div style={{width:'100%',maxWidth:400}}>
-        <Mono size={10} color='var(--accent)' style={{letterSpacing:'0.2em',display:'block',marginBottom:8}}>SPLIT//OPS</Mono>
+        <Mono size={10} color='var(--accent)' style={{letterSpacing:'0.2em',display:'block',marginBottom:8}}>SPLIT BILL</Mono>
         <h1 style={{fontSize:22,fontWeight:600,marginBottom:8,color:'var(--t1)'}}>Connect Groq</h1>
         <p style={{fontSize:13,color:'var(--t2)',lineHeight:1.65,marginBottom:24}}>Groq is free, fast, and works everywhere. No credit card needed.</p>
         <div style={{borderLeft:'1.5px solid var(--b2)',paddingLeft:16,display:'flex',flexDirection:'column',gap:14,marginBottom:28}}>
@@ -443,7 +443,7 @@ function App(){
       <div style={{padding:'13px 16px 11px',borderBottom:'1px solid var(--b1)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <div style={{width:6,height:6,borderRadius:'50%',background:'var(--accent)',boxShadow:'0 0 8px var(--accent)',animation:'pulse 2s ease-in-out infinite'}}/>
-          <Mono size={12} color='var(--t1)' style={{fontWeight:600,letterSpacing:'0.18em'}}>SPLIT//OPS</Mono>
+          <Mono size={12} color='var(--t1)' style={{fontWeight:600,letterSpacing:'0.18em'}}>SPLIT BILL</Mono>
           {data?.restaurant&&(
             <span style={{fontFamily:'var(--mono)',fontSize:9,padding:'2px 7px',background:'var(--s2)',color:'var(--t2)',border:'0.5px solid var(--b2)',borderRadius:2,letterSpacing:'0.08em'}}>
               {data.restaurant.toUpperCase()}
