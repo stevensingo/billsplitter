@@ -10,10 +10,8 @@
   <title>SPLIT//OPS</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
-
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { height: 100%; }
-
     :root {
       --bg:        #080A0E;
       --bg1:       #0D1017;
@@ -31,25 +29,14 @@
       --mono:      'IBM Plex Mono', monospace;
       --sans:      'IBM Plex Sans', sans-serif;
     }
-
-    body {
-      font-family: var(--sans);
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* scrollbar */
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-    @keyframes spin   { to { transform: rotate(360deg); } }
-    @keyframes pulse  { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    @keyframes scan   { 0% { top: -20%; } 100% { top: 110%; } }
-    @keyframes fadeUp { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
-    @keyframes blink  { 0%,100% { opacity:1; } 50% { opacity:0; } }
-
+    @keyframes spin    { to { transform: rotate(360deg); } }
+    @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    @keyframes scan    { 0%{top:-10%} 100%{top:110%} }
+    @keyframes fadeUp  { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
     .row-in { animation: fadeUp 0.18s ease both; }
     * { -webkit-tap-highlight-color: transparent; }
     input, button { font-family: var(--sans); }
@@ -57,243 +44,196 @@
 </head>
 <body>
 <div id="root"></div>
-
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="text/babel">
-const { useState, useRef, useCallback, useEffect } = React;
+const { useState, useRef, useEffect } = React;
 
-/* ─── OpenRouter ─────────────────────────────────────── */
+/* ── compress: resize to ≤800px, JPEG 0.75 ─────────── */
+function compressImage(file, maxPx = 800, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      const scale = Math.min(1, maxPx / Math.max(w, h));
+      w = Math.round(w * scale); h = Math.round(h * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error("Compression failed")); return; }
+        const reader = new FileReader();
+        reader.onload = e => resolve({
+          b64: e.target.result.split(",")[1],
+          mime: "image/jpeg",
+          sizeKB: Math.round(blob.size / 1024),
+          w, h,
+        });
+        reader.readAsDataURL(blob);
+      }, "image/jpeg", quality);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+/* ── OpenRouter call ────────────────────────────────── */
 const PROMPT = `You are a receipt parser. Extract all line items and charges from this receipt image.
 Return ONLY a valid JSON object (no markdown, no explanation) with this structure:
-{
-  "restaurant": "name or null",
-  "currency": "symbol e.g. Rp or $",
-  "items": [{ "id": "uid", "name": "string", "qty": number, "unit_price": number, "total_price": number }],
-  "subtotal": number,
-  "service_charge": number,
-  "tax": number,
-  "other_charges": [{ "label": "string", "amount": number }],
-  "total": number
-}
+{"restaurant":"name or null","currency":"symbol e.g. Rp or $","items":[{"id":"uid","name":"string","qty":number,"unit_price":number,"total_price":number}],"subtotal":number,"service_charge":number,"tax":number,"other_charges":[{"label":"string","amount":number}],"total":number}
 Rules: qty>=1 integer, unit_price=total_price/qty, missing charges=0, other_charges=[], amounts are plain numbers.`;
 
-async function callOpenRouter(key, b64, mime) {
-  console.log("[SPLIT//OPS] Starting API call...");
-  console.log("[SPLIT//OPS] Model: openrouter/free");
-  console.log("[SPLIT//OPS] Image mime type:", mime);
-  console.log("[SPLIT//OPS] Base64 size (chars):", b64.length, `(~${(b64.length * 0.75 / 1024).toFixed(1)} KB)`);
-
-  const payload = {
-    model: "openrouter/free",
-    messages: [{
-      role: "user",
-      content: [
-        { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
-        { type: "text", text: PROMPT }
-      ]
-    }],
-    temperature: 0.1,
-    max_tokens: 1200,
-  };
-
-  console.log("[SPLIT//OPS] Sending fetch to openrouter.ai...");
+async function callOpenRouter(key, b64, mime, onStatus) {
+  onStatus("CONTACTING OPENROUTER...");
   const t0 = Date.now();
-
   let r;
   try {
     r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-exp:free",
+        messages: [{ role: "user", content: [
+          { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } },
+          { type: "text", text: PROMPT }
+        ]}],
+        temperature: 0.1, max_tokens: 1000,
+      })
     });
-  } catch (fetchErr) {
-    console.error("[SPLIT//OPS] fetch() threw an error (network/CORS issue):", fetchErr);
-    throw new Error("Network error — check your connection: " + fetchErr.message);
+  } catch (e) {
+    console.error("[SPLIT] fetch failed:", e);
+    throw new Error("Network error — check your connection");
   }
 
-  console.log("[SPLIT//OPS] Response received in", Date.now() - t0, "ms");
-  console.log("[SPLIT//OPS] HTTP status:", r.status, r.statusText);
-
+  onStatus(`RESPONSE ${r.status} · ${Date.now()-t0}ms`);
   const raw = await r.text();
-  console.log("[SPLIT//OPS] Raw response body:", raw);
+  console.log("[SPLIT] HTTP", r.status, "·", Date.now()-t0, "ms");
+  console.log("[SPLIT] Raw:", raw);
 
   let d;
-  try {
-    d = JSON.parse(raw);
-  } catch (parseErr) {
-    console.error("[SPLIT//OPS] Failed to parse response as JSON:", parseErr);
-    throw new Error("Non-JSON response from OpenRouter: " + raw.slice(0, 200));
-  }
+  try { d = JSON.parse(raw); } catch(e) { throw new Error("Bad response: " + raw.slice(0, 120)); }
+  if (d.error) throw new Error(d.error.message);
 
-  if (d.error) {
-    console.error("[SPLIT//OPS] API returned an error object:", d.error);
-    throw new Error(d.error.message);
-  }
+  const model = d.model || "unknown";
+  onStatus(`PARSING · ${model.split("/").pop()}`);
+  console.log("[SPLIT] Model used:", model);
 
   const txt = d.choices?.[0]?.message?.content || "";
-  console.log("[SPLIT//OPS] Model used:", d.model || "unknown");
-  console.log("[SPLIT//OPS] Raw model output:", txt);
+  console.log("[SPLIT] Model output:", txt);
 
-  let parsed;
+  // extract JSON even if model wraps it
+  const match = txt.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("No JSON in model response: " + txt.slice(0, 200));
   try {
-    parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
-  } catch (jsonErr) {
-    console.error("[SPLIT//OPS] Failed to parse model output as JSON:", jsonErr);
-    throw new Error("Model didn't return valid JSON. Output was: " + txt.slice(0, 300));
+    return JSON.parse(match[0]);
+  } catch(e) {
+    throw new Error("Invalid JSON: " + match[0].slice(0, 200));
   }
-
-  console.log("[SPLIT//OPS] Parsed receipt:", parsed);
-  return parsed;
 }
 
-/* ─── Helpers ─────────────────────────────────────────── */
-function fmt(n, sym="Rp") {
-  if (sym==="Rp"||sym==="IDR") return "Rp\u00a0"+Math.round(n).toLocaleString("id-ID");
-  return sym+Number(n).toFixed(2);
+/* ── Helpers ────────────────────────────────────────── */
+function fmt(n, sym = "Rp") {
+  if (sym === "Rp" || sym === "IDR") return "Rp\u00a0" + Math.round(n).toLocaleString("id-ID");
+  return sym + Number(n).toFixed(2);
 }
-
-/* ─── Micro components ────────────────────────────────── */
 function Label({ children }) {
   return <p style={{fontFamily:"var(--mono)",fontSize:9,fontWeight:500,letterSpacing:"0.18em",color:"var(--text3)",textTransform:"uppercase",margin:"0 0 8px"}}>{children}</p>;
 }
-
-function Divider() {
-  return <div style={{height:1,background:"var(--border)",margin:"0"}} />;
+function Tag({ children, color = "var(--text3)" }) {
+  return <span style={{fontFamily:"var(--mono)",fontSize:9,fontWeight:600,letterSpacing:"0.1em",padding:"2px 7px",background:color+"18",color,border:`0.5px solid ${color}40`,borderRadius:2}}>{children}</span>;
 }
-
-function Tag({ children, color }) {
-  return (
-    <span style={{fontFamily:"var(--mono)",fontSize:9,fontWeight:600,letterSpacing:"0.12em",padding:"2px 6px",background:color+"18",color,border:`0.5px solid ${color}40`,borderRadius:2}}>
-      {children}
-    </span>
-  );
-}
-
-function PlusMinusBtn({ onClick, disabled, label }) {
+function StepBtn({ onClick, disabled, label }) {
   return (
     <button onClick={onClick} disabled={disabled} aria-label={label} style={{
-      width:36, height:36, border:`1px solid ${disabled?"var(--border)":"var(--border2)"}`,
-      background: disabled?"transparent":"var(--bg3)",
-      color: disabled?"var(--text3)":"var(--text2)",
-      cursor: disabled?"not-allowed":"pointer",
-      fontSize:18, fontFamily:"var(--mono)", fontWeight:300,
-      display:"flex", alignItems:"center", justifyContent:"center",
-      borderRadius:2, transition:"all 0.1s", flexShrink:0,
+      width:40,height:40,border:`1px solid ${disabled?"var(--border)":"var(--border2)"}`,
+      background:disabled?"transparent":"var(--bg3)",
+      color:disabled?"var(--text3)":"var(--text2)",
+      cursor:disabled?"not-allowed":"pointer",
+      fontSize:20,fontFamily:"var(--mono)",fontWeight:300,
+      display:"flex",alignItems:"center",justifyContent:"center",
+      borderRadius:2,flexShrink:0,
     }}>{label}</button>
   );
 }
 
-/* ─── Key entry screen ────────────────────────────────── */
+/* ── Key screen ─────────────────────────────────────── */
 function KeyScreen({ onSave }) {
-  const [val,setVal]=useState("");
-  const [err,setErr]=useState("");
+  const [val, setVal] = useState("");
+  const [err, setErr] = useState("");
   const submit = () => {
-    const k=val.trim();
-    if (!k.startsWith("sk-or-")) { setErr("INVALID KEY FORMAT — MUST BEGIN WITH sk-or-"); return; }
-    localStorage.setItem("bsplit_or_key",k);
+    const k = val.trim();
+    if (!k.startsWith("sk-or-")) { setErr("KEY MUST BEGIN WITH sk-or-"); return; }
+    localStorage.setItem("bsplit_key", k);
     onSave(k);
   };
   return (
     <div style={{minHeight:"100dvh",display:"flex",flexDirection:"column",justifyContent:"center",padding:"24px 20px",background:"var(--bg)"}}>
       <div style={{maxWidth:420,width:"100%",margin:"0 auto"}}>
-
-        <div style={{marginBottom:32}}>
-          <p style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.2em",color:"var(--accent)",marginBottom:6}}>SPLIT//OPS v1.0</p>
-          <h1 style={{fontSize:24,fontWeight:600,letterSpacing:"-0.3px",marginBottom:8}}>API KEY REQUIRED</h1>
-          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>
-            Uses OpenRouter — free vision AI that works globally. No credit card needed.
-          </p>
-        </div>
-
+        <p style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.2em",color:"var(--accent)",marginBottom:6}}>SPLIT//OPS v1.0</p>
+        <h1 style={{fontSize:24,fontWeight:600,letterSpacing:"-0.3px",marginBottom:8}}>API KEY REQUIRED</h1>
+        <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,marginBottom:24}}>
+          Uses OpenRouter — free vision AI. No credit card needed.
+        </p>
         <div style={{borderLeft:"2px solid var(--border2)",paddingLeft:16,marginBottom:28,display:"flex",flexDirection:"column",gap:12}}>
           {[
-            ["01","Create a free account at","openrouter.ai","https://openrouter.ai"],
-            ["02","Go to","Keys → Create Key","https://openrouter.ai/keys"],
-            ["03","Copy the key (starts with sk-or-) → paste below",null,null],
+            ["01","Go to","openrouter.ai","https://openrouter.ai"],
+            ["02","Sign up → Settings →","Keys → Create Key","https://openrouter.ai/keys"],
+            ["03","Paste key below (starts with sk-or-)",null,null],
           ].map(([n,pre,link,href])=>(
             <div key={n} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
               <span style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",minWidth:20,paddingTop:1}}>{n}</span>
-              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.5}}>
+              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,margin:0}}>
                 {pre}{" "}
                 {href ? <a href={href} target="_blank" style={{color:"var(--accent)",textDecoration:"none"}}>{link}</a>
-                       : link ? <span style={{color:"var(--text)",fontWeight:500}}>{link}</span> : null}
+                      : link ? <span style={{color:"var(--text)",fontWeight:500}}>{link}</span> : null}
               </p>
             </div>
           ))}
         </div>
-
-        <input
-          type="password" placeholder="sk-or-..." value={val}
+        <input type="password" placeholder="sk-or-..." value={val}
           onChange={e=>{setVal(e.target.value);setErr("");}}
           onKeyDown={e=>e.key==="Enter"&&submit()}
-          style={{
-            width:"100%",padding:"13px 14px",
-            background:"var(--bg1)",border:`1px solid ${err?"var(--red)":"var(--border2)"}`,
-            borderRadius:3,fontSize:14,fontFamily:"var(--mono)",color:"var(--text)",
-            outline:"none",marginBottom:err?8:16,
-            letterSpacing:"0.05em",
-          }}
+          style={{width:"100%",padding:"13px 14px",background:"var(--bg1)",border:`1px solid ${err?"var(--red)":"var(--border2)"}`,borderRadius:3,fontSize:14,fontFamily:"var(--mono)",color:"var(--text)",outline:"none",marginBottom:err?8:14,letterSpacing:"0.05em"}}
         />
-        {err && <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--red)",letterSpacing:"0.1em",marginBottom:16}}>{err}</p>}
-
-        <button onClick={submit} style={{
-          width:"100%",padding:14,background:"var(--accent)",color:"#000",
-          border:"none",borderRadius:3,fontSize:13,fontWeight:600,
-          fontFamily:"var(--mono)",letterSpacing:"0.12em",cursor:"pointer",
-        }}>
+        {err && <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--red)",letterSpacing:"0.1em",marginBottom:12}}>{err}</p>}
+        <button onClick={submit} style={{width:"100%",padding:14,background:"var(--accent)",color:"#000",border:"none",borderRadius:3,fontSize:13,fontWeight:600,fontFamily:"var(--mono)",letterSpacing:"0.12em",cursor:"pointer"}}>
           AUTHENTICATE →
         </button>
-
-        <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",textAlign:"center",marginTop:14,letterSpacing:"0.1em"}}>
-          FREE TIER AVAILABLE · KEY STORED LOCALLY · NEVER TRANSMITTED
+        <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",textAlign:"center",marginTop:12,letterSpacing:"0.1em",lineHeight:1.8}}>
+          FREE TIER · KEY STORED IN BROWSER · NEVER SHARED
         </p>
       </div>
     </div>
   );
 }
 
-/* ─── Upload screen ───────────────────────────────────── */
+/* ── Upload screen ──────────────────────────────────── */
 function UploadScreen({ onFile, error }) {
-  const [drag,setDrag]=useState(false);
-  const fileRef=useRef(); const camRef=useRef();
+  const [drag, setDrag] = useState(false);
+  const fileRef = useRef(); const camRef = useRef();
   const pick = f => { if (f?.type.startsWith("image/")) onFile(f); };
   return (
     <div style={{padding:"0 16px"}}>
-      {/* Camera CTA */}
-      <button onClick={()=>camRef.current.click()} style={{
-        width:"100%",minHeight:64,border:"1px solid var(--accent)",borderRadius:3,
-        background:"var(--accent-bg)",color:"var(--accent)",
-        fontSize:13,fontWeight:600,fontFamily:"var(--mono)",letterSpacing:"0.12em",
-        cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,
-        marginBottom:10,
-      }}>
+      <button onClick={()=>camRef.current.click()} style={{width:"100%",minHeight:64,border:"1px solid var(--accent)",borderRadius:3,background:"var(--accent-bg)",color:"var(--accent)",fontSize:13,fontWeight:600,fontFamily:"var(--mono)",letterSpacing:"0.12em",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginBottom:10}}>
         <CamIcon /> SCAN RECEIPT
       </button>
       <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>pick(e.target.files[0])} />
-
-      {/* Drop zone */}
       <div
-        onDragOver={e=>{e.preventDefault();setDrag(true);}}
-        onDragLeave={()=>setDrag(false)}
+        onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)}
         onDrop={e=>{e.preventDefault();setDrag(false);pick(e.dataTransfer.files[0]);}}
         onClick={()=>fileRef.current.click()}
-        style={{
-          border:`1px dashed ${drag?"var(--accent)":"var(--border2)"}`,
-          borderRadius:3,padding:"24px 20px",textAlign:"center",cursor:"pointer",
-          background:drag?"var(--accent-bg)":"transparent",transition:"all 0.15s",
-          marginBottom:10,
-        }}
+        style={{border:`1px dashed ${drag?"var(--accent)":"var(--border2)"}`,borderRadius:3,padding:"24px 20px",textAlign:"center",cursor:"pointer",background:drag?"var(--accent-bg)":"transparent",transition:"all 0.15s",marginBottom:10}}
       >
         <UploadIcon />
         <p style={{fontSize:13,color:"var(--text2)",margin:"8px 0 2px",fontWeight:500}}>Upload from library</p>
         <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",letterSpacing:"0.08em"}}>JPG · PNG · HEIC · WEBP</p>
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>pick(e.target.files[0])} />
-
       {error && (
-        <div style={{padding:"10px 14px",border:"1px solid var(--red)40",borderRadius:3,background:"rgba(255,77,106,0.06)"}}>
+        <div style={{padding:"10px 14px",border:"1px solid rgba(255,77,106,0.3)",borderRadius:3,background:"rgba(255,77,106,0.06)"}}>
           <p style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--red)",letterSpacing:"0.05em"}}>ERR // {error}</p>
         </div>
       )}
@@ -301,75 +241,69 @@ function UploadScreen({ onFile, error }) {
   );
 }
 
-/* ─── Loading screen ──────────────────────────────────── */
-function LoadingScreen({ preview }) {
-  const [dots,setDots]=useState(".");
-  useEffect(()=>{
-    const t=setInterval(()=>setDots(d=>d.length>=3?".":"d.".repeat(d.length+1).slice(0,-1)+"."),400);
-    return ()=>clearInterval(t);
-  },[]);
+/* ── Loading screen ─────────────────────────────────── */
+function LoadingScreen({ preview, status }) {
   return (
-    <div style={{padding:"0 16px",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:20}}>
+    <div style={{padding:"0 16px",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:16}}>
       {preview && (
-        <div style={{position:"relative",width:"100%",maxHeight:200,overflow:"hidden",borderRadius:3,marginBottom:20,border:"1px solid var(--border)"}}>
-          <img src={preview} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",display:"block",opacity:0.4}} />
-          <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom, transparent 60%, var(--bg) 100%)"}} />
-          {/* scan line */}
-          <div style={{position:"absolute",left:0,right:0,height:2,background:`linear-gradient(to right, transparent, var(--accent), transparent)`,animation:"scan 1.6s linear infinite",boxShadow:`0 0 12px var(--accent)`}} />
+        <div style={{position:"relative",width:"100%",maxHeight:180,overflow:"hidden",borderRadius:3,marginBottom:20,border:"1px solid var(--border)"}}>
+          <img src={preview} alt="" style={{width:"100%",maxHeight:180,objectFit:"cover",display:"block",opacity:0.35}} />
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom, transparent 50%, var(--bg) 100%)"}} />
+          <div style={{position:"absolute",left:0,right:0,height:2,background:"linear-gradient(to right, transparent, var(--accent), transparent)",animation:"scan 1.4s linear infinite",boxShadow:"0 0 10px var(--accent)"}} />
         </div>
       )}
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"pulse 1s ease-in-out infinite"}} />
-        <p style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--accent)",letterSpacing:"0.15em"}}>PARSING RECEIPT{dots}</p>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",boxShadow:"0 0 8px var(--accent)",animation:"pulse 1s ease-in-out infinite"}} />
+        <p style={{fontFamily:"var(--mono)",fontSize:12,color:"var(--accent)",letterSpacing:"0.14em"}}>{status}</p>
       </div>
-      <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",letterSpacing:"0.1em"}}>OPENROUTER FREE · AUTO-SELECTED VISION MODEL</p>
+      {/* Step timeline */}
+      <div style={{width:"100%",maxWidth:300,marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+        {[
+          ["COMPRESS IMAGE",  status !== "COMPRESSING IMAGE..."],
+          ["UPLOAD TO API",   status.startsWith("CONTACTING") || status.startsWith("RESPONSE") || status.startsWith("PARSING")],
+          ["PARSE RECEIPT",   status.startsWith("PARSING")],
+        ].map(([label, done]) => (
+          <div key={label} style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:done?"var(--accent)":"var(--border2)",flexShrink:0,transition:"background 0.3s"}} />
+            <p style={{fontFamily:"var(--mono)",fontSize:9,letterSpacing:"0.14em",color:done?"var(--text2)":"var(--text3)"}}>{label}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-/* ─── Split screen ────────────────────────────────────── */
+/* ── Split screen ───────────────────────────────────── */
 function SplitScreen({ receipt, sel, onAdj }) {
   const extras = [
-    receipt.service_charge>0 && {label:"SERVICE CHARGE",amount:receipt.service_charge},
-    receipt.tax>0 && {label:"PAJAK / TAX",amount:receipt.tax},
+    receipt.service_charge > 0 && { label: "SERVICE CHARGE", amount: receipt.service_charge },
+    receipt.tax > 0 && { label: "PAJAK / TAX", amount: receipt.tax },
     ...(receipt.other_charges||[]).map(c=>({label:c.label.toUpperCase(),amount:c.amount})),
   ].filter(Boolean);
-
   const mySub  = receipt.items.reduce((s,i)=>s+(sel[i.id]||0)*i.unit_price,0);
   const totSub = receipt.items.reduce((s,i)=>s+i.total_price,0);
   const ratio  = totSub>0?mySub/totSub:0;
-  const any    = mySub>0;
-
   return (
     <div style={{padding:"0 16px"}}>
-      {/* Items table */}
       <div style={{border:"1px solid var(--border)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
         <div style={{padding:"8px 14px",background:"var(--bg1)",borderBottom:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <Label>LINE ITEMS</Label>
-          <Tag color="var(--text3)">{receipt.items.length} ROWS</Tag>
+          <Tag>{receipt.items.length} ROWS</Tag>
         </div>
         {receipt.items.map((item,idx)=>{
           const s=sel[item.id]||0, active=s>0;
           return (
-            <div key={item.id} className="row-in" style={{
-              animationDelay:`${idx*30}ms`,
-              display:"flex",alignItems:"center",gap:10,padding:"11px 14px",
-              background:active?"var(--accent-bg)":"transparent",
-              borderBottom:idx<receipt.items.length-1?"1px solid var(--border)":"none",
-              transition:"background 0.15s",
-            }}>
+            <div key={item.id} className="row-in" style={{animationDelay:`${idx*25}ms`,display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:active?"var(--accent-bg)":"transparent",borderBottom:idx<receipt.items.length-1?"1px solid var(--border)":"none",transition:"background 0.15s"}}>
               <div style={{flex:1,minWidth:0}}>
-                <p style={{fontSize:14,fontWeight:active?500:400,color:active?"var(--text)":"var(--text2)",margin:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                  {item.name}
-                </p>
-                <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",margin:"2px 0 0",letterSpacing:"0.05em"}}>
+                <p style={{fontSize:14,fontWeight:active?500:400,color:active?"var(--text)":"var(--text2)",margin:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</p>
+                <p style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",margin:"2px 0 0"}}>
                   {item.qty>1?`${item.qty}× `:""}{fmt(item.unit_price,receipt.currency)}
                 </p>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                <PlusMinusBtn onClick={()=>onAdj(item.id,-1,item.qty)} disabled={s===0} label="−" />
+                <StepBtn onClick={()=>onAdj(item.id,-1,item.qty)} disabled={s===0} label="−" />
                 <span style={{minWidth:24,textAlign:"center",fontFamily:"var(--mono)",fontSize:16,fontWeight:500,color:active?"var(--accent)":"var(--text3)"}}>{s}</span>
-                <PlusMinusBtn onClick={()=>onAdj(item.id,+1,item.qty)} disabled={s===item.qty} label="+" />
+                <StepBtn onClick={()=>onAdj(item.id,+1,item.qty)} disabled={s===item.qty} label="+" />
               </div>
               <span style={{minWidth:80,textAlign:"right",fontFamily:"var(--mono)",fontSize:13,color:active?"var(--accent)":"var(--text3)",fontWeight:active?500:400,flexShrink:0}}>
                 {fmt(s*item.unit_price,receipt.currency)}
@@ -378,8 +312,6 @@ function SplitScreen({ receipt, sel, onAdj }) {
           );
         })}
       </div>
-
-      {/* Shared charges */}
       {extras.length>0 && (
         <div style={{border:"1px solid var(--border)",borderRadius:3,overflow:"hidden",marginBottom:10}}>
           <div style={{padding:"8px 14px",background:"var(--bg1)",borderBottom:"1px solid var(--border)"}}>
@@ -388,16 +320,14 @@ function SplitScreen({ receipt, sel, onAdj }) {
           {extras.map((c,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderBottom:i<extras.length-1?"1px solid var(--border)":"none"}}>
               <span style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--text2)",letterSpacing:"0.06em"}}>{c.label}</span>
-              <span style={{fontFamily:"var(--mono)",fontSize:12,color:any?"var(--accent)":"var(--text3)"}}>
-                {any ? fmt(c.amount*ratio,receipt.currency) : fmt(c.amount,receipt.currency)}
+              <span style={{fontFamily:"var(--mono)",fontSize:12,color:mySub>0?"var(--accent)":"var(--text3)"}}>
+                {mySub>0 ? fmt(c.amount*ratio,receipt.currency) : fmt(c.amount,receipt.currency)}
               </span>
             </div>
           ))}
-          {any && (
+          {mySub>0 && (
             <div style={{padding:"6px 14px 8px",background:"var(--bg1)"}}>
-              <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",letterSpacing:"0.1em"}}>
-                PRORATED AT {Math.round(ratio*100)}% OF SUBTOTAL
-              </p>
+              <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",letterSpacing:"0.1em"}}>PRORATED AT {Math.round(ratio*100)}% OF SUBTOTAL</p>
             </div>
           )}
         </div>
@@ -406,58 +336,49 @@ function SplitScreen({ receipt, sel, onAdj }) {
   );
 }
 
-/* ─── SVG icons ───────────────────────────────────────── */
-const CamIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
-  </svg>
-);
-const UploadIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",margin:"0 auto"}}>
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-  </svg>
-);
+/* ── Icons ──────────────────────────────────────────── */
+const CamIcon = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>;
+const UploadIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{display:"block",margin:"0 auto"}}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
 
-/* ─── Main App ────────────────────────────────────────── */
+/* ── App ────────────────────────────────────────────── */
 function App() {
-  const [apiKey,setApiKey] = useState(()=>localStorage.getItem("bsplit_or_key")||"");
-  const [stage,setStage]   = useState("upload"); // upload | loading | split
-  const [receipt,setReceipt] = useState(null);
-  const [preview,setPreview] = useState(null);
-  const [sel,setSel]         = useState({});
-  const [error,setError]     = useState(null);
+  const [apiKey,  setApiKey]  = useState(()=>localStorage.getItem("bsplit_key")||"");
+  const [stage,   setStage]   = useState("upload");
+  const [status,  setStatus]  = useState("COMPRESSING IMAGE...");
+  const [receipt, setReceipt] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [sel,     setSel]     = useState({});
+  const [error,   setError]   = useState(null);
 
   if (!apiKey) return <KeyScreen onSave={setApiKey} />;
 
   const process = async (file) => {
-    if (!file?.type.startsWith("image/")) { console.warn("[SPLIT//OPS] Rejected file — not an image:", file?.type); return; }
-    console.log("[SPLIT//OPS] File selected:", file.name, file.type, `${(file.size/1024).toFixed(1)} KB`);
-    if (file.size > 10 * 1024 * 1024) console.warn("[SPLIT//OPS] File is >10MB — this may cause issues");
-    setError(null); setStage("loading");
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const b64 = e.target.result.split(",")[1];
-      console.log("[SPLIT//OPS] FileReader done, base64 length:", b64.length, `(~${(b64.length*0.75/1024).toFixed(1)} KB)`);
-      setPreview(e.target.result);
-      try {
-        const parsed = await callOpenRouter(apiKey, b64, file.type||"image/jpeg");
-        setReceipt(parsed);
-        const init={};
-        parsed.items.forEach(i=>{init[i.id]=0;});
-        setSel(init);
-        setStage("split");
-      } catch(err) {
-        console.error("[SPLIT//OPS] Top-level catch:", err);
-        setError(err.message||"Vision analysis failed");
-        setStage("upload");
-      }
-    };
-    reader.onerror = (e) => { console.error("[SPLIT//OPS] FileReader error:", e); setError("Failed to read image file."); setStage("upload"); };
-    reader.readAsDataURL(file);
+    console.log("[SPLIT] File:", file.name, file.type, `${(file.size/1024).toFixed(0)} KB`);
+    setError(null); setStage("loading"); setStatus("COMPRESSING IMAGE...");
+    setPreview(URL.createObjectURL(file));
+
+    let compressed;
+    try {
+      compressed = await compressImage(file);
+      console.log("[SPLIT] Compressed:", `${compressed.w}×${compressed.h}`, `${compressed.sizeKB} KB`);
+    } catch(e) {
+      console.error("[SPLIT] Compression failed:", e);
+      setError("Image compression failed: " + e.message); setStage("upload"); return;
+    }
+
+    try {
+      const parsed = await callOpenRouter(apiKey, compressed.b64, compressed.mime, setStatus);
+      setReceipt(parsed);
+      const init={}; parsed.items.forEach(i=>{init[i.id]=0;}); setSel(init);
+      setStage("split");
+    } catch(e) {
+      console.error("[SPLIT] API error:", e);
+      setError(e.message); setStage("upload");
+    }
   };
 
-  const adj=(id,d,max)=>setSel(s=>({...s,[id]:Math.max(0,Math.min(max,(s[id]||0)+d))}));
-  const reset=()=>{setStage("upload");setReceipt(null);setPreview(null);setSel({});setError(null);};
+  const adj   = (id,d,max) => setSel(s=>({...s,[id]:Math.max(0,Math.min(max,(s[id]||0)+d))}));
+  const reset = () => { setStage("upload"); setReceipt(null); setPreview(null); setSel({}); setError(null); };
 
   const mySub  = receipt ? receipt.items.reduce((s,i)=>s+(sel[i.id]||0)*i.unit_price,0) : 0;
   const totSub = receipt ? receipt.items.reduce((s,i)=>s+i.total_price,0) : 0;
@@ -469,59 +390,43 @@ function App() {
   return (
     <div style={{maxWidth:480,margin:"0 auto",minHeight:"100dvh",display:"flex",flexDirection:"column",background:"var(--bg)"}}>
 
-      {/* ── Top bar ── */}
-      <div style={{padding:"16px 16px 14px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg)"}}>
+      {/* Top bar */}
+      <div style={{padding:"14px 16px 12px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",boxShadow:`0 0 8px var(--accent)`,animation:"pulse 2s ease-in-out infinite"}} />
+          <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",boxShadow:"0 0 8px var(--accent)",animation:"pulse 2s ease-in-out infinite"}} />
           <span style={{fontFamily:"var(--mono)",fontSize:12,fontWeight:600,letterSpacing:"0.18em",color:"var(--text)"}}>SPLIT//OPS</span>
           {receipt && <Tag color="var(--text2)">{receipt.restaurant||"RECEIPT"}</Tag>}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          {stage==="split" && (
-            <button onClick={reset} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.12em",color:"var(--text2)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>
-              NEW
-            </button>
-          )}
-          <button onClick={()=>{localStorage.removeItem("bsplit_or_key");setApiKey("");reset();}} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.1em",color:"var(--text3)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>
-            KEY
-          </button>
+        <div style={{display:"flex",gap:6}}>
+          {stage==="split" && <button onClick={reset} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.12em",color:"var(--text2)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>NEW</button>}
+          <button onClick={()=>{localStorage.removeItem("bsplit_key");setApiKey("");reset();}} style={{fontFamily:"var(--mono)",fontSize:10,letterSpacing:"0.1em",color:"var(--text3)",background:"none",border:"1px solid var(--border)",borderRadius:2,padding:"5px 10px",cursor:"pointer"}}>KEY</button>
         </div>
       </div>
 
-      {/* ── Content ── */}
+      {/* Content */}
       <div style={{flex:1,overflowY:"auto",paddingTop:14,WebkitOverflowScrolling:"touch"}}>
         {stage==="upload"  && <UploadScreen onFile={process} error={error} />}
-        {stage==="loading" && <LoadingScreen preview={preview} />}
+        {stage==="loading" && <LoadingScreen preview={preview} status={status} />}
         {stage==="split" && receipt && <SplitScreen receipt={receipt} sel={sel} onAdj={adj} />}
       </div>
 
-      {/* ── Footer total ── */}
+      {/* Footer total */}
       {stage==="split" && receipt && (
-        <div style={{borderTop:"1px solid var(--border)",background:"var(--bg1)",padding:`12px 16px max(16px, env(safe-area-inset-bottom))`}}>
-          {/* Breakdown row */}
+        <div style={{borderTop:"1px solid var(--border)",background:"var(--bg1)",padding:`10px 16px max(16px,env(safe-area-inset-bottom))`}}>
           {any && (
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,padding:"0 2px"}}>
-              {[
-                ["ITEMS",mySub],
-                ["CHARGES",extras*ratio],
-                ["TOTAL",myTotal],
-              ].map(([lbl,val])=>(
+              {[["ITEMS",mySub],["CHARGES",extras*ratio],["TOTAL",myTotal]].map(([lbl,val])=>(
                 <div key={lbl}>
                   <p style={{fontFamily:"var(--mono)",fontSize:8,letterSpacing:"0.15em",color:"var(--text3)",marginBottom:2}}>{lbl}</p>
-                  <p style={{fontFamily:"var(--mono)",fontSize:11,color:lbl==="TOTAL"?"var(--accent)":"var(--text2)",fontWeight:500}}>
-                    {fmt(val,receipt.currency)}
-                  </p>
+                  <p style={{fontFamily:"var(--mono)",fontSize:11,color:lbl==="TOTAL"?"var(--accent)":"var(--text2)",fontWeight:500}}>{fmt(val,receipt.currency)}</p>
                 </div>
               ))}
             </div>
           )}
-          {/* Main total */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",border:`1px solid ${any?"var(--accent)40":"var(--border)"}`,borderRadius:3,background:any?"var(--accent-bg)":"var(--bg2)",transition:"all 0.25s"}}>
             <div>
               <p style={{fontFamily:"var(--mono)",fontSize:9,letterSpacing:"0.18em",color:any?"var(--accent-dim)":"var(--text3)",marginBottom:2}}>YOUR SHARE</p>
-              {any && ratio>0 && (
-                <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",letterSpacing:"0.06em"}}>{Math.round(ratio*100)}% OF BILL</p>
-              )}
+              {any && <p style={{fontFamily:"var(--mono)",fontSize:9,color:"var(--text3)",letterSpacing:"0.06em"}}>{Math.round(ratio*100)}% OF BILL</p>}
             </div>
             <p style={{fontFamily:"var(--mono)",fontSize:28,fontWeight:600,color:any?"var(--accent)":"var(--text3)",letterSpacing:"-0.5px",transition:"color 0.25s"}}>
               {fmt(myTotal,receipt.currency)}
