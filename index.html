@@ -312,7 +312,7 @@ function ItemRow({item, count, onAdj, onUpdate, currency, delay, shareInfo, onSh
       {editing&&(
         <div style={{padding:'10px 14px 12px',background:'var(--s1)',borderTop:'1px solid var(--b1)',display:'flex',flexDirection:'column',gap:8}}>
           <Mono size={9} color='var(--yellow)' style={{letterSpacing:'0.14em',marginBottom:2}}>CORRECT ITEM DATA</Mono>
-          <div style={{display:'flex',gap:8'}}>
+          <div style={{display:'flex',gap:8}}>
             <div style={{flex:2}}>
               <Mono size={9} color='var(--t3)' style={{letterSpacing:'0.1em',display:'block',marginBottom:4}}>NAME</Mono>
               <input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))}
