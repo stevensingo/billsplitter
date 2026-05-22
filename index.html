@@ -6,7 +6,7 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="theme-color" content="#060809"/>
-  <title>SPLIT//OPS</title>
+  <title>SPLIT BILL</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -136,7 +136,7 @@ function KeyScreen({onSave}){
   return(
     <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px 20px'}}>
       <div style={{width:'100%',maxWidth:400}}>
-        <Mono size={10} color='var(--accent)' style={{letterSpacing:'0.2em',display:'block',marginBottom:8}}>SPLIT//OPS</Mono>
+        <Mono size={10} color='var(--accent)' style={{letterSpacing:'0.2em',display:'block',marginBottom:8}}>SPLIT BILL</Mono>
         <h1 style={{fontSize:22,fontWeight:600,marginBottom:8,color:'var(--t1)'}}>Connect Groq</h1>
         <p style={{fontSize:13,color:'var(--t2)',lineHeight:1.65,marginBottom:24}}>Groq is free, fast, and works everywhere. No credit card needed.</p>
         <div style={{borderLeft:'1.5px solid var(--b2)',paddingLeft:16,display:'flex',flexDirection:'column',gap:14,marginBottom:28}}>
@@ -229,16 +229,14 @@ function LoadingScreen({preview,status}){
 /* ── Item row (with share + edit) ─────────────────────── */
 function ItemRow({item, count, onAdj, onUpdate, currency, delay, shareInfo, onShareToggle, onShareCount}){
   const [editing, setEditing]=useState(false);
-  const [draft, setDraft]=useState({name:item.name, qty:item.qty});
+  const [draft, setDraft]=useState({name:item.name, qty:item.qty, unit_price:item.unit_price});
   const active=count>0;
   const isShared=shareInfo?.enabled;
 
-  const previewUnitPrice=Math.round(item.total_price/Math.max(1,parseInt(draft.qty)||1));
-
   const saveEdit=()=>{
     const qty=Math.max(1,parseInt(draft.qty)||1);
-    const up=item.total_price/qty;
-    onUpdate({...item, name:draft.name||item.name, qty, unit_price:up, total_price:item.total_price});
+    const up=Math.max(0,parseFloat(draft.unit_price)||0);
+    onUpdate({...item, name:draft.name||item.name, qty, unit_price:up, total_price:up*qty});
     setEditing(false);
   };
 
@@ -288,18 +286,21 @@ function ItemRow({item, count, onAdj, onUpdate, currency, delay, shareInfo, onSh
         </button>
 
         {isShared&&(
-          <div style={{display:'flex',alignItems:'center',gap:5,marginRight:12}}>
-            <Mono size={9} color='var(--t3)' style={{letterSpacing:'0.06em'}}>÷</Mono>
-            <button onClick={()=>onShareCount(item.id,Math.max(2,shareInfo.count-1))} style={{width:22,height:22,borderRadius:2,border:'1px solid var(--b2)',background:'var(--s3)',color:'var(--t2)',fontSize:14,fontFamily:'var(--mono)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>−</button>
-            <Mono size={13} color='var(--accent)' style={{minWidth:18,textAlign:'center',fontWeight:500}}>{shareInfo.count}</Mono>
-            <button onClick={()=>onShareCount(item.id,Math.min(99,shareInfo.count+1))} style={{width:22,height:22,borderRadius:2,border:'1px solid var(--b2)',background:'var(--s3)',color:'var(--t2)',fontSize:14,fontFamily:'var(--mono)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>+</button>
-            <Mono size={9} color='var(--t2)' style={{letterSpacing:'0.06em'}}>PPL</Mono>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginRight:12}}>
+            <Mono size={9} color='var(--t2)' style={{letterSpacing:'0.08em'}}>÷</Mono>
+            <input
+              type="number" min="2" max="99"
+              value={shareInfo.count}
+              onChange={e=>onShareCount(item.id,Math.max(2,parseInt(e.target.value)||2))}
+              style={{width:40,padding:'3px 6px',background:'var(--s2)',border:'1px solid var(--b2)',borderRadius:3,fontFamily:'var(--mono)',fontSize:12,color:'var(--accent)',outline:'none',textAlign:'center'}}
+            />
+            <Mono size={9} color='var(--t2)' style={{letterSpacing:'0.06em'}}>PEOPLE</Mono>
           </div>
         )}
 
         {/* edit button */}
         <button
-          onClick={()=>{setDraft({name:item.name,qty:item.qty});setEditing(e=>!e);}}
+          onClick={()=>{setDraft({name:item.name,qty:item.qty,unit_price:item.unit_price});setEditing(e=>!e);}}
           style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',display:'flex',alignItems:'center',gap:5,padding:'4px 0'}}
         >
           <PencilIcon active={editing}/>
@@ -318,21 +319,18 @@ function ItemRow({item, count, onAdj, onUpdate, currency, delay, shareInfo, onSh
                 style={{width:'100%',padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--b2)',borderRadius:3,fontFamily:'var(--sans)',fontSize:13,color:'var(--t1)',outline:'none'}}/>
             </div>
           </div>
-          <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+          <div style={{display:'flex',gap:8}}>
             <div style={{flex:1}}>
               <Mono size={9} color='var(--t3)' style={{letterSpacing:'0.1em',display:'block',marginBottom:4}}>QTY</Mono>
-              <input type="number" min="1" value={draft.qty}
-                onChange={e=>setDraft(d=>({...d,qty:e.target.value}))}
+              <input type="number" min="1" value={draft.qty} onChange={e=>setDraft(d=>({...d,qty:e.target.value}))}
                 style={{width:'100%',padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--b2)',borderRadius:3,fontFamily:'var(--mono)',fontSize:13,color:'var(--t1)',outline:'none',textAlign:'center'}}/>
             </div>
             <div style={{flex:2}}>
-              <Mono size={9} color='var(--t3)' style={{letterSpacing:'0.1em',display:'block',marginBottom:4}}>UNIT PRICE (AUTO)</Mono>
-              <div style={{padding:'7px 9px',background:'var(--bg)',border:'1px solid var(--b1)',borderRadius:3,fontFamily:'var(--mono)',fontSize:13,color:'var(--t2)'}}>
-                {money(previewUnitPrice,currency)}
-              </div>
+              <Mono size={9} color='var(--t3)' style={{letterSpacing:'0.1em',display:'block',marginBottom:4}}>UNIT PRICE</Mono>
+              <input type="number" min="0" value={draft.unit_price} onChange={e=>setDraft(d=>({...d,unit_price:e.target.value}))}
+                style={{width:'100%',padding:'7px 9px',background:'var(--s2)',border:'1px solid var(--b2)',borderRadius:3,fontFamily:'var(--mono)',fontSize:13,color:'var(--t1)',outline:'none'}}/>
             </div>
           </div>
-          <Mono size={9} color='var(--t3)' style={{letterSpacing:'0.06em'}}>Total stays {money(item.total_price,currency)} — unit price auto-adjusts</Mono>
           <button onClick={saveEdit} style={{padding:'8px 0',background:'var(--yellow)',color:'#1a1400',border:'none',borderRadius:3,fontFamily:'var(--mono)',fontSize:11,fontWeight:600,letterSpacing:'0.12em',cursor:'pointer'}}>
             CONFIRM CORRECTION
           </button>
@@ -445,7 +443,7 @@ function App(){
       <div style={{padding:'13px 16px 11px',borderBottom:'1px solid var(--b1)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <div style={{width:6,height:6,borderRadius:'50%',background:'var(--accent)',boxShadow:'0 0 8px var(--accent)',animation:'pulse 2s ease-in-out infinite'}}/>
-          <Mono size={12} color='var(--t1)' style={{fontWeight:600,letterSpacing:'0.18em'}}>SPLIT//OPS</Mono>
+          <Mono size={12} color='var(--t1)' style={{fontWeight:600,letterSpacing:'0.18em'}}>SPLIT BILL</Mono>
           {data?.restaurant&&(
             <span style={{fontFamily:'var(--mono)',fontSize:9,padding:'2px 7px',background:'var(--s2)',color:'var(--t2)',border:'0.5px solid var(--b2)',borderRadius:2,letterSpacing:'0.08em'}}>
               {data.restaurant.toUpperCase()}
